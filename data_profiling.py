@@ -6,6 +6,7 @@
 
 from typing import List, Optional, Callable, Dict
 import numpy as np
+import sys
 import time
 import torch
 from torch.utils.data import DataLoader, IterableDataset
@@ -24,10 +25,6 @@ from datasets import (
     load_dataset,
 )
 from transformers import AutoTokenizer, AutoModelForCausalLM
-
-
-# from datasets.distributed import split_dataset_by_node
-
 
 
 class HuggingFaceDataset(IterableDataset):
@@ -91,7 +88,9 @@ class HuggingFaceDataset(IterableDataset):
         while True:
             for sample in iter(self._data):
                 sample_text = sample["text"]
+                # print("text bytes:", sys.getsizeof(sample_text))
                 sample_tokens = self._tokenizer.encode(sample_text)
+                # print("token bytes:", sys.getsizeof(sample_tokens))
                 all_tokens.extend(sample_tokens)
 
                 while len(all_tokens) >= max_buffer_token_len:
@@ -143,6 +142,10 @@ def clm_process(
         tokenized_batch = tokenizer.batch_encode_plus(texts, return_attention_mask=False, return_token_type_ids=False)
         tokenized_batch = {k: [np.array(tokenized_texts) for tokenized_texts in v] for k, v in tokenized_batch.items()}
         return group_texts(tokenized_batch)
+    
+    # def counter_transform(entry):
+    #     print("pre-tokenization bytes:", sys.getsizeof(entry["input_ids"]))
+    #     return entry
 
     train_dataset = raw_dataset.map(
         _tokenize_and_group_texts,
@@ -154,6 +157,8 @@ def clm_process(
         load_from_cache_file=not dataset_overwrite_cache,
         desc=f"Grouping texts in chunks of {sequence_length+1}",
     )
+
+    # train_dataset.set_transform(counter_transform)
     return train_dataset
 
 
@@ -162,7 +167,7 @@ dataset_path = "/raid/xind/datasets/tinystories"
 tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-2-7b-hf")
 seq_len = 1024
 infinite = True
-batch_size = 1024
+batch_size = 10
 num_workers = 1
 
 
@@ -199,6 +204,8 @@ def profiling(dl, steps):
 
 
 
-print("pre tokenization: %fs"%(profiling(pretokenized_dl, 100)))
-print("on the fly: %fs"%(profiling(onethefly_dl, 100)))
+print("pre tokenization: %fs"%(profiling(pretokenized_dl, 1)))
+print("on the fly: %fs"%(profiling(onethefly_dl, 1)))
+
+
 
